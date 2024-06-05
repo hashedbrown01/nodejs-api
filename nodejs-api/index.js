@@ -20,8 +20,9 @@ connection.connect((err) => {
     console.log('Connected to MySQL');
 });
 
-// Promisify query method for async/await support
 connection.query = util.promisify(connection.query);
+
+//1. 회원관리
 
 // 회원가입 관리
 app.post('/register', async (req, res) => {
@@ -94,7 +95,9 @@ app.delete('/account/:user_id', async (req, res) => {
     }
 });
 
-// 팔로우 관리
+// 2. 팔로우 관리
+
+// 팔로우
 app.post('/follow', async (req, res) => {
     const { shooter_id, target_id } = req.body;
 
@@ -144,7 +147,8 @@ app.delete('/follow/:shooter_id/:target_id', async (req, res) => {
     }
 });
 
-// 게시글 관리
+// 3. 게시글 관리
+
 // 게시글 작성
 app.post('/posts', async (req, res) => {
     const { post_context, user_id } = req.body;
@@ -160,8 +164,6 @@ app.post('/posts', async (req, res) => {
     }
 });
 
-// 게시글 목록 끌어오기
-// 게시글 목록 끌어오기
 // 게시글 목록 끌어오기
 app.get('/posts', (req, res) => {
     const user_id = req.query.user_id;
@@ -199,10 +201,33 @@ app.get('/posts', (req, res) => {
     }
 });
 
+//내 포스트만 보여주기
+app.get('/my-posts', (req, res) => {
+    const user_id = req.query.user_id
+    
+    if(!user_id){
+        return res.status(400).json({message:'User ID is required'})
+    }
 
+    const sql = "SELECT post_id, post_context FROM post WHERE user_id = ?;"
+    const values = [user_id]
+
+    connection.query(sql, values, (err, userPosts) => {
+        if(err){
+            console.error(err);
+            return res.status(500).json({message: 'Failed to retrieve user posts'})
+        }
+
+        if(userPosts.length === 0){
+            res.status(404).json({message: 'You have no posts yet'})
+        }else{
+            res.json(userPosts)
+        }
+    })
+})
 
 // 게시글 삭제
-app.delete('/posts/:post_id', async (req, res) => {
+app.delete('/my-posts/:post_id', async (req, res) => {
     const post_id = parseInt(req.params.post_id);
     const sql = 'DELETE FROM post WHERE post_id = ?;';
     const values = [post_id];

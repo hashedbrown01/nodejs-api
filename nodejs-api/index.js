@@ -1,212 +1,227 @@
-const express = require('express')
-const bodyParser = require('body-parser')
+const express = require('express');
+const bodyParser = require('body-parser');
+const mysql = require('mysql');
+const util = require('util');
 
-const app = express()
-const port = 3000
+const app = express();
+const port = 3000;
 
-app.use(bodyParser.json())
+app.use(bodyParser.json());
 
-const mysql = require('mysql')
 const connection = mysql.createConnection({
     host: 'localhost',
-    user:'testuser',
+    user: 'testuser',
     password: 'testuser',
     database: 'nodejs-sql'
-})
+});
 
-connection.connect((err)=>{
-    if(err) throw err;
-    console.log('Connected to MySQL')
-})
+connection.connect((err) => {
+    if (err) throw err;
+    console.log('Connected to MySQL');
+});
 
-//유저 로그인 관리
+// Promisify query method for async/await support
+connection.query = util.promisify(connection.query);
 
-//회원가입 관리
-app.post('/register', (req, res)=>{
-    const {user_id, user_pw, user_name} = req.body
-    const sql = 'INSERT INTO user (user_id, user_pw, user_name) VALUES (?, ?, ?);'
-    const values = [user_id, user_pw, user_name]
+// 회원가입 관리
+app.post('/register', async (req, res) => {
+    const { user_id, user_pw, user_name } = req.body;
+    const sql = 'INSERT INTO user (user_id, user_pw, user_name) VALUES (?, ?, ?);';
+    const values = [user_id, user_pw, user_name];
 
-    connection.query(sql, values, (err, result)=>{
-        if(err){
-            console.error(err);
-            return res.status(500).json({message: 'registration failed'})
+    try {
+        await connection.query(sql, values);
+        res.status(201).json({ message: 'Registration success' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Registration failed' });
+    }
+});
+
+// 로그인 관리
+app.post('/login', async (req, res) => {
+    const { user_id, user_pw } = req.body;
+    const sql = 'SELECT * FROM user WHERE user_id = ? AND user_pw = ?';
+    const values = [user_id, user_pw];
+
+    try {
+        const result = await connection.query(sql, values);
+        if (result.length === 0) {
+            console.log('Login failed');
+            res.status(200).json({ message: 'Login failed', code: 2 });
+        } else {
+            console.log('Login success');
+            res.status(200).json({ message: 'Login success', code: 1 });
         }
-        res.status(201).json({message: 'Registration success'})
-    })
-})
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Login failed' });
+    }
+});
 
-//로그인 관리
-app.post('/login', (req, res)=>{
-    const {user_id, user_pw} = req.body;
-    const sql = 'SELECT * FROM user WHERE user_id = ? AND user_pw = ?'
-    const values = [user_id, user_pw]
+// 회원 검색
+app.get('/search', async (req, res) => {
+    const searchTerm = req.query.searchTerm;
+    const sql = 'SELECT * FROM user WHERE user_name LIKE ? OR user_id LIKE ?;';
+    const values = [`%${searchTerm}%`, `%${searchTerm}%`];
 
-    connection.query(sql, values, (err, result) =>{
-        if(err){
-            console.error(err);
-            return res.status(500).json({message:'login failed'})
+    try {
+        const users = await connection.query(sql, values);
+        res.json(users);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Search failed' });
+    }
+});
+
+// 회원 탈퇴
+app.delete('/account/:user_id', async (req, res) => {
+    const user_id = req.params.user_id;
+    const sql = 'DELETE FROM user WHERE user_id = ?';
+    const values = [user_id];
+
+    try {
+        const result = await connection.query(sql, values);
+        if (result.affectedRows === 0) {
+            console.log('Account deletion failed: User not found');
+            res.status(404).json({ message: 'Account deletion failed', code: 2 });
+        } else {
+            res.status(200).json({ message: 'Account deletion success', code: 1 });
         }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Account deletion failed' });
+    }
+});
 
-        if(result.length === 0){
-            console.log('login failed')
-            res.status(200).json({message: 'login failed', code:2})
-        }else{
-            console.log('login success')
-            res.status(200).json({message: 'login success', code:1})
-        }
-    })
-})
+// 팔로우 관리
+app.post('/follow', async (req, res) => {
+    const { shooter_id, target_id } = req.body;
 
-//회원 검색
-app.get('/search', async(req, res)=>{
-    const serachTerm = req.query.serachTerm
+    const checkFollowSql = 'SELECT * FROM follow WHERE shooter_id = ? AND target_id = ?;';
+    const checkFollowValues = [shooter_id, target_id];
 
-    const sql = 'SELECT * FROM user WHERE user_name LIKE ? OR user_id LIKE ?;'
-    const values = [serachTerm, serachTerm]
+    try {
+        const checkFollowResult = await connection.query(checkFollowSql, checkFollowValues);
 
-    const users = await connection.query(sql, values)
-    res.json(users)
-})
-
-//회원 탈퇴
-app.delete('/account/:user_id', (req, res)=>{
-    const user_id = req.params.user_id
-
-    const sql = 'DELETE FROM user WHERE user_id = ?'
-    const values = [user_id]
-
-    connection.query(sql, values, (err, result) => {
-        if(err){
-            console.error(err)
-            return res.status(500).json({message: 'account deletion failed'})
-        }
-
-        if(result.affectedRows === 0){
-            console.log('account deletion failed: User not found')
-            res.status(404).json({message: 'account deletion failed', code: 2})
-        }else{
-            res.status(200).json({message: 'account deletion success', code: 1}, )
-        }
-    })
-})
-
-//팔로우 관리
-
-//팔로우
-app.post('/follow', (req, res)=>{
-    
-    const{shooter_id, target_id} = req.body
-
-    const checkFollowSql = 'SELECT * FROM follow where shooter_id = ? AND target_id = ?;'
-    const checkFollowValues = [shooter_id, target_id]
-
-    connection.query(checkFollowSql, checkFollowValues, (err, checkFollowResult) =>{
-        if(err){
-            console.error(err)
-            return res.status(500).json({message: 'Follow action failed'})
-        }
-        
-        if(checkFollowResult.length > 0){
-            console.log('Already following')
-            return res.status(400).json({message: 'Already Following'})
+        if (checkFollowResult.length > 0) {
+            console.log('Already following');
+            return res.status(400).json({ message: 'Already following' });
         }
 
-        const sql = 'INSERT INTO follow (shooter_id, target_id) VALUES (?, ?);'
-        const values = [shooter_id, target_id]
+        const sql = 'INSERT INTO follow (shooter_id, target_id) VALUES (?, ?);';
+        const values = [shooter_id, target_id];
 
-        connection.query(sql, values, (err, result) =>{
-            if(err){
-                console.error(err)
-                return res.status(500).json({message: 'Follow action failed'})
+        await connection.query(sql, values);
+        console.log('Follow successful');
+        res.status(201).json({ message: 'Follow successful' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Follow action failed' });
+    }
+});
+
+// 언팔로우
+app.delete('/follow/:shooter_id/:target_id', async (req, res) => {
+    const { shooter_id, target_id } = req.params;
+
+    const sql = 'DELETE FROM follow WHERE shooter_id = ? AND target_id = ?;';
+    const values = [shooter_id, target_id];
+
+    try {
+        const result = await connection.query(sql, values);
+
+        if (result.affectedRows === 0) {
+            console.log('Unfollow failed: Can\'t find target user');
+            res.status(404).json({ message: 'Unfollow failed' });
+        } else {
+            console.log('Unfollow successful');
+            res.status(200).json({ message: 'Unfollow successful' });
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Unfollow failed' });
+    }
+});
+
+// 게시글 관리
+// 게시글 작성
+app.post('/posts', async (req, res) => {
+    const { post_context, user_id } = req.body;
+    const sql = 'INSERT INTO post (post_context, user_id) VALUES (?, ?);';
+    const values = [post_context, user_id];
+
+    try {
+        const result = await connection.query(sql, values);
+        res.status(201).json({ message: 'Post created successfully', post_id: result.insertId });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Post creation failed' });
+    }
+});
+
+// 게시글 목록 끌어오기
+// 게시글 목록 끌어오기
+// 게시글 목록 끌어오기
+app.get('/posts', (req, res) => {
+    const user_id = req.query.user_id;
+
+    if (!user_id) {
+        return res.status(400).json({ message: 'User ID is required' });
+    }
+
+    try {
+        connection.query('SELECT * FROM post WHERE user_id = ?', [user_id], (err, userPosts) => {
+            if (err) {
+                console.error(err);
+                return res.status(500).json({ message: 'Failed to retrieve posts' });
             }
 
-            console.log('Follow Successful')
-            res.status(201).json({message: 'Follow Successful'})
-        })
-    })
-})
+            connection.query('SELECT p.* FROM post p INNER JOIN follow f ON f.shooter_id = ? AND f.target_id = p.user_id', [user_id], (err, followPosts) => {
+                if (err) {
+                    console.error(err);
+                    return res.status(500).json({ message: 'Failed to retrieve posts' });
+                }
 
-//언팔로우
-app.delete('follow/:shooter_id/:target_id', (req, res) =>{
-    const shooter_id = req.params.shooter_id
-    const target_id = req.params.target_id
+                const allPosts = [...userPosts, ...followPosts];
+                allPosts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    const sql = 'DELETE FROM follow WHERE shooter_id = ? AND target_id = ?;'
-    const values = [shooter_id, target_id]
+                if (allPosts.length === 0) {
+                    res.status(404).json({ message: 'There are nothing in posts yet' });
+                } else {
+                    res.json(allPosts);
+                }
+            });
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Failed to retrieve posts' });
+    }
+});
 
-    connection.query(sql, values, (err, result)=>{
-        if(err){
-            console.error(err)
-            return req.status(500).json({message: 'Unfollow failed'})
-        }
 
-        if(result.affectedRows === 0){
-            console.log('Unfllow failed: Can\'t find target user')
-            res.status(404).json({message: 'Unfollow failed'})
-        }else{
-            console.log('Unfollow successful')
-            req.status(200).json({message: 'Unfollow Successful'})
-        }
-    })
-})
-
-//게시글 관리
-
-//게시글 작성
-app.post('/posts', (req, res) =>{
-    const{ post_context, user_id } = req.body
-    const sql = 'INSERT INTO post (post_context, user_id) VALUES (?, ?);'
-    const values = [post_context, user_id]
-
-    connection.query(sql, values, (err, result) =>{
-        if (err){
-            console.error(err)
-            return res.status(500).json({message: 'post creation failed'})
-        }
-
-        res.status(201).json({message: 'Post created successfully', post_id: result.insertId})
-    })
-})
-
-//게시글 목록 끌어오기
-app.get('/posts', async(req, res)=>{
-    const user_id = req.user.user_id
-
-    const userPostSql = 'SELECT * FROM post WHERE user_id = ?;'
-    const userPostValues = [user_id]
-
-    const userPostResult = await connection.query(userPostSql, userPostValues)
-
-    const followPostSql = 'SELECT p.* FROM post p INNER JOIN follow f ON f.shooter_id = ? AND f.target_id = p.user_id'
-    const followPostValues = [user_id]
-    
-    const followPostResult = await connection.query(followPostSql, followPostValues)
-    const allPost = [...userPostResult, ...followPostResult]
-
-    allPost.sort((post1, post2) => post2.created_at - post1.created_at)
-    res.json(allPost)
-})
 
 // 게시글 삭제
-app.delete('/posts/:post_id', (req, res) => {
-    const post_id = parseInt(req.params.post_id)
-    const sql = 'DELETE FROM post WHERE post_id = ?;'
-    const values = [post_id]
+app.delete('/posts/:post_id', async (req, res) => {
+    const post_id = parseInt(req.params.post_id);
+    const sql = 'DELETE FROM post WHERE post_id = ?;';
+    const values = [post_id];
 
-    connectionl.query(sql, values, (err, result) => {
-        if(err){
-            console.error(err)
-            return res.status(500).json({message: 'post deletion failed'})
+    try {
+        const result = await connection.query(sql, values);
+        if (result.affectedRows === 0) {
+            console.log('Post deletion failed: Post not found');
+            res.status(404).json({ message: 'Post deletion failed' });
+        } else {
+            console.log('Post deleted successfully');
+            res.status(200).json({ message: 'Post deleted successfully' });
         }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Post deletion failed' });
+    }
+});
 
-        if(result.affectedRows === 0){
-            console.log('post deletion failed: post not found')
-            res.status(404).json({message: 'post deletion failed'})
-        }else{
-            console.log('post deleted successfully')
-            res.status(200).json({message: 'post deleted successfully'})
-        }
-    })
-})
-app.listen(port)
+app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
+});

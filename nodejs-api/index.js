@@ -4,7 +4,7 @@ const mysql = require('mysql');
 const util = require('util');
 
 const app = express();
-const port = 3000;
+const port = 3001;
 
 app.use(bodyParser.json());
 
@@ -52,7 +52,7 @@ app.post('/login', async (req, res) => {
             res.status(200).json({ message: 'Login failed', code: 2 });
         } else {
             console.log('Login success');
-            res.status(200).json({ message: 'Login success', code: 1 });
+            res.status(200).json({ message: 'Login success', code: 1, user_id : result[0].user_id });
         }
     } catch (err) {
         console.error(err);
